@@ -1,0 +1,12 @@
+---
+- name: Configure Database Nodes
+  hosts: db
+  become: yes
+  roles:
+    - db_server
+
+- name: Configure Application Nodes
+  hosts: workers
+  become: yes
+  roles:
+    - app_server

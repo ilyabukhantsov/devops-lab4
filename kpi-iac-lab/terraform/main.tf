@@ -33,7 +33,6 @@ resource "libvirt_volume" "db_disk" {
   size           = 10737418240 # 10GB
 }
 
-
 resource "libvirt_cloudinit_disk" "common_init" {
   name      = "common_init.iso"
   pool      = "default"
@@ -48,6 +47,13 @@ resource "libvirt_network" "kpi_net" {
   addresses = ["192.168.150.0/24"]
   dhcp {
     enabled = true
+  }
+  dns {
+    enabled    = true
+    local_only = false
+    forwarders {
+      address = "8.8.8.8"
+    }
   }
 }
 
