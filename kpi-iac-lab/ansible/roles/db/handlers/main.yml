@@ -1,0 +1,12 @@
+---
+- name: Restart DB Service
+  systemd:
+    name: mysql
+    state: restarted
+  failed_when: false
+
+- name: Restart MariaDB
+  systemd:
+    name: mariadb
+    state: restarted
+  failed_when: false

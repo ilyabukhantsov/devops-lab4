@@ -1,0 +1,16 @@
+[Unit]
+Description=Notes Service (KPI Lab 4)
+After=network.target
+
+[Service]
+User=app
+Group=app
+WorkingDirectory=/opt/kpi-app
+ExecStart=/usr/bin/java -jar /opt/kpi-app/mywebapp.jar \
+    --server.port=5200 \
+    --spring.config.location=/opt/kpi-app/application.properties
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

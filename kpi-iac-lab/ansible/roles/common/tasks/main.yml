@@ -1,0 +1,89 @@
+- name: ПРИМУСОВЕ НАЛАШТУВАННЯ ПУБЛІЧНОГО DNS
+  copy:
+    dest: /etc/resolv.conf
+    content: |
+      nameserver 8.8.8.8
+      nameserver 8.8.4.4
+    mode: '0644'
+
+- name: Чекаємо завершення фонових процесів cloud-init
+  command: cloud-init status --wait
+  changed_when: false
+  failed_when: false
+
+- name: Зупинка сервісів автоматичного оновлення apt
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+    - unattended-upgrades.service
+  ignore_errors: true
+
+- name: Очищення блокувальних файлів apt/dpkg
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /var/lib/apt/lists/lock
+    - /var/cache/apt/archives/lock
+    - /var/lib/dpkg/lock
+    - /var/lib/dpkg/lock-frontend
+
+- name: Фіксація налаштувань репозиторіїв (DEB822)
+  copy:
+    dest: /etc/apt/sources.list.d/ubuntu.sources
+    content: |
+      Types: deb
+      URIs: http://archive.ubuntu.com/ubuntu/
+      Suites: noble noble-updates noble-backports
+      Components: main restricted universe multiverse
+      Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+      Types: deb
+      URIs: http://security.ubuntu.com/ubuntu/
+      Suites: noble-security
+      Components: main restricted universe multiverse
+      Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+    mode: '0644'
+
+- name: Видалення застарілого списку джерел
+  file:
+    path: /etc/apt/sources.list
+    state: absent
+
+- name: Оновлення індексу пакетів apt
+  apt:
+    update_cache: yes
+  register: apt_update
+  until: apt_update is succeeded
+  retries: 5
+  delay: 10
+
+- name: Керування користувачем та групою teacher
+  block:
+    - group:
+        name: teacher
+        state: present
+    - user:
+        name: teacher
+        shell: /bin/bash
+        password: "{{ '12345678' | password_hash('sha512') }}"
+        groups: sudo
+        append: yes
+        state: present
+
+- name: Налаштування файлової структури студента
+  file:
+    path: /home/student
+    state: directory
+    mode: '0755'
+
+- name: Створення файлу gradebook
+  copy:
+    content: "6\n"
+    dest: /home/student/gradebook
+    mode: '0644'
+    force: no

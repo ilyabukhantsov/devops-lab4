@@ -1,80 +1,18 @@
 ---
-- name: Deploy Spring Boot Application
+- name: Базове налаштування всіх віртуальних машин
+  hosts: all
+  become: yes
+  roles:
+    - common
+
+- name: Розгортання та конфігурація бази даних MariaDB
+  hosts: db
+  become: yes
+  roles:
+    - db
+
+- name: Розгортання веб-застосунку та Nginx
   hosts: workers
   become: yes
-  vars:
-    local_jar_path: "../mywebapp.jar"
-    app_dir: "/opt/kpi-app"
-
-  tasks:
-    - name: Ensure target directory exists
-      file:
-        path: "{{ app_dir }}"
-        state: directory
-        owner: app
-        group: app
-        mode: '0755'
-
-    - name: Copy Spring Boot JAR artifact to worker node
-      copy:
-        src: "{{ local_jar_path }}"
-        dest: "{{ app_dir }}/app.jar"
-        owner: app
-        group: app
-        mode: '0744'
-      notify: restart kpi-app
-
-    - name: Copy application configuration properties
-      copy:
-        src: files/application.properties
-        dest: "{{ app_dir }}/application.properties"
-        owner: app
-        group: app
-        mode: '0644'
-      notify: restart kpi-app
-
-    - name: Create Systemd service definition for the Java app
-      copy:
-        dest: /etc/systemd/system/kpi-app.service
-        content: |
-          [Unit]
-          Description=KPI Notes Service Spring Boot Application
-          After=network.target
-
-          [Service]
-          User=app
-          WorkingDirectory={{ app_dir }}
-          ExecStart=/usr/bin/java -jar {{ app_dir }}/app.jar --spring.config.location={{ app_dir }}/application.properties
-          SuccessExitStatus=143
-          TimeoutStopSec=10
-          Restart=always
-          RestartSec=5
-
-          [Install]
-          WantedBy=multi-user.target
-      notify: reload systemd
-
-    - name: Flush handlers to apply systemd reload immediately
-      meta: flush_handlers
-
-    - name: Ensure KPI Java application is started and enabled
-      systemd:
-        name: kpi-app
-        state: started
-        enabled: yes
-
-    - name: Force Nginx reload to ensure proxy pass is active
-      systemd:
-        name: nginx
-        state: restarted
-
-  handlers:
-    - name: reload systemd
-      systemd:
-        daemon_reload: yes
-
-    - name: restart kpi-app
-      systemd:
-        name: kpi-app
-        state: restarted
-
+  roles:
+    - worker

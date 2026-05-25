@@ -1,0 +1,87 @@
+---
+- name: Встановлення Java 21, Nginx та curl
+  apt:
+    name:
+      - openjdk-21-jdk
+      - nginx
+      - curl
+    state: present
+
+- name: Створення системного користувача app
+  user:
+    name: app
+    system: yes
+    create_home: no
+    shell: /usr/sbin/nologin
+
+- name: Створення користувача operator із паролем 12345678
+  user:
+    name: operator
+    shell: /bin/bash
+    password: "{{ '12345678' | password_hash('sha512') }}"
+
+- name: Налаштування обмежених правил sudo для operator
+  copy:
+    dest: /etc/sudoers.d/operator-rules
+    content: |
+      operator ALL=(ALL) NOPASSWD: /usr/bin/systemctl start mywebapp.service
+      operator ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop mywebapp.service
+      operator ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart mywebapp.service
+      operator ALL=(ALL) NOPASSWD: /usr/bin/systemctl status mywebapp.service
+      operator ALL=(ALL) NOPASSWD: /usr/sbin/nginx -s reload
+    mode: '0440'
+    validate: '/usr/sbin/visudo -cf %s'
+
+- name: Створення директорії застосунку
+  file:
+    path: /opt/kpi-app
+    state: directory
+    owner: app
+    group: app
+    mode: '0755'
+
+- name: Копіювання твого готового JAR-файлу
+  copy:
+    src: files/app.jar
+    dest: /opt/kpi-app/mywebapp.jar
+    owner: app
+    group: app
+    mode: '0755'
+
+- name: Генерація файлу application.properties згідно твого шаблону
+  template:
+    src: application.properties.j2
+    dest: /opt/kpi-app/application.properties
+    owner: app
+    group: app
+    mode: '0600'
+
+- name: Створення Systemd сервісу
+  template:
+    src: mywebapp.service.j2
+    dest: /etc/systemd/system/mywebapp.service
+  notify: Reload Systemd
+
+- name: Конфігурація сайту Nginx як Reverse Proxy
+  template:
+    src: mywebapp.conf.j2
+    dest: /etc/nginx/sites-available/mywebapp
+  notify: Restart Nginx
+
+- name: Активація конфігурації Nginx
+  file:
+    src: /etc/nginx/sites-available/mywebapp
+    dest: /etc/nginx/sites-enabled/mywebapp
+    state: link
+
+- name: Видалення дефолтного сайту Nginx
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Restart Nginx
+
+- name: Запуск сервісу застосунку
+  systemd:
+    name: mywebapp.service
+    state: started
+    enabled: yes

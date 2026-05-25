@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 0.13"
   required_providers {
     libvirt = {
       source  = "dmacvicar/libvirt"
@@ -12,68 +12,58 @@ provider "libvirt" {
   uri = "qemu:///system"
 }
 
-resource "libvirt_volume" "base_image" {
-  name   = "ubuntu-base.qcow2"
-  pool   = "default"
-  source = "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
-  format = "qcow2"
-}
-
-resource "libvirt_volume" "worker_disk" {
-  name           = "worker.qcow2"
-  pool           = "default"
-  base_volume_id = libvirt_volume.base_image.id
-  size           = 10737418240 # 10GB
-}
-
-resource "libvirt_volume" "db_disk" {
-  name           = "db.qcow2"
-  pool           = "default"
-  base_volume_id = libvirt_volume.base_image.id
-  size           = 10737418240 # 10GB
-}
-
-resource "libvirt_cloudinit_disk" "common_init" {
-  name      = "common_init.iso"
-  pool      = "default"
-  user_data = templatefile("${path.module}/cloud_init.cfg", {
-    ssh_public_key = file("~/.ssh/id_ed25519.pub")
-  })
-}
-
-resource "libvirt_network" "kpi_net" {
+resource "libvirt_network" "kpi_network" {
   name      = "kpi_network"
   mode      = "nat"
+  domain    = "kpi.local"
   addresses = ["192.168.150.0/24"]
   dhcp {
     enabled = true
   }
-  dns {
-    enabled    = true
-    local_only = false
-    forwarders {
-      address = "8.8.8.8"
-    }
-  }
 }
 
-resource "libvirt_domain" "worker" {
+resource "libvirt_volume" "ubuntu_base" {
+  name   = "ubuntu_base.qcow2"
+  pool   = "default"
+  source = "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+  format = "qcow2"
+}
+
+resource "libvirt_volume" "worker_disk" {
+  name           = "worker_disk.qcow2"
+  base_volume_id = libvirt_volume.ubuntu_base.id
+  pool           = "default"
+  size           = 10737418240
+}
+
+resource "libvirt_volume" "db_disk" {
+  name           = "db_disk.qcow2"
+  base_volume_id = libvirt_volume.ubuntu_base.id
+  pool           = "default"
+  size           = 10737418240
+}
+
+resource "libvirt_cloudinit_disk" "commoninit" {
+  name      = "commoninit.iso"
+  user_data = file("${path.module}/cloud_init.cfg")
+  pool      = "default"
+}
+
+resource "libvirt_domain" "kpi_worker" {
   name   = "kpi-worker"
   memory = "2048"
   vcpu   = 2
-  type   = "kvm"
-
-  cloudinit = libvirt_cloudinit_disk.common_init.id
-
+  cloudinit = libvirt_cloudinit_disk.commoninit.id
+  
   network_interface {
-    network_id     = libvirt_network.kpi_net.id
+    network_id     = libvirt_network.kpi_network.id
     wait_for_lease = true
   }
-
+  
   disk {
     volume_id = libvirt_volume.worker_disk.id
   }
-
+  
   console {
     type        = "pty"
     target_port = "0"
@@ -81,23 +71,21 @@ resource "libvirt_domain" "worker" {
   }
 }
 
-resource "libvirt_domain" "db" {
+resource "libvirt_domain" "kpi_db" {
   name   = "kpi-db"
-  memory = "2048"
-  vcpu   = 2
-  type   = "kvm"
-
-  cloudinit = libvirt_cloudinit_disk.common_init.id
-
+  memory = "1024"
+  vcpu   = 1
+  cloudinit = libvirt_cloudinit_disk.commoninit.id
+  
   network_interface {
-    network_id     = libvirt_network.kpi_net.id
+    network_id     = libvirt_network.kpi_network.id
     wait_for_lease = true
   }
-
+  
   disk {
     volume_id = libvirt_volume.db_disk.id
   }
-
+  
   console {
     type        = "pty"
     target_port = "0"
@@ -105,10 +93,9 @@ resource "libvirt_domain" "db" {
   }
 }
 
-output "worker_ip" { 
-  value = length(libvirt_domain.worker.network_interface[0].addresses) > 0 ? libvirt_domain.worker.network_interface[0].addresses[0] : "No IP yet" 
+output "worker_ip" {
+  value = libvirt_domain.kpi_worker.network_interface[0].addresses[0]
 }
-
-output "db_ip" { 
-  value = length(libvirt_domain.db.network_interface[0].addresses) > 0 ? libvirt_domain.db.network_interface[0].addresses[0] : "No IP yet" 
+output "db_ip" {
+  value = libvirt_domain.kpi_db.network_interface[0].addresses[0]
 }
